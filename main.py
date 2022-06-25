@@ -3,6 +3,30 @@ import json
 import datetime
 
 
+def isHoliday(datestr=None):
+    if datestr is None:
+        datestr = str(datetime.date.today())
+    week = datetime.datetime.strptime(datestr, '%Y-%m-%d').weekday()
+    now = datetime.datetime.now()
+    year = str(int(now.strftime('%Y')))
+    try:
+        holidays_data = requests.get('https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/{}.json'.format(year)).json()
+    except Exception as e: return False
+    for holiday in holidays_data['days']:
+        if holiday['date'] == datestr and holiday['isOffDay']: return True
+        elif holiday['date'] == datestr and not holiday['isOffDay']: return False
+    if week == 5 or week == 6: return True
+    return False
+
+
+def get_non_zero_date():
+    now = datetime.datetime.now()
+    year = str(int(now.strftime('%Y')))
+    month = str(int(now.strftime('%m')))
+    day = str(int(now.strftime('%d')))
+    return year, month, day
+
+
 class AutoReport(object):
 
     def __init__(self, username, password, owner) -> None:
@@ -50,6 +74,13 @@ class AutoReport(object):
         return False
     
 
+    def public_check(self, response):
+        if not response: return False
+        if not response['RetValue']: return False
+        if not response['RetStatus'] == 100: return False
+        return True
+    
+
     def login(self):
         _path = '/LoginMng/login'
         _data = {
@@ -57,13 +88,7 @@ class AutoReport(object):
             "Password": self.password,
             "Type": 0
         }
-        _response = self.public_request(path=_path, data=_data)
-        if not _response: return False
-        else:
-            if _response['RetValue'] and _response['RetStatus'] == 100:
-                self.usercode = _response['RetValue']
-                return True
-            else: return False
+        return self.public_request(path=_path, data=_data)
 
     
     def get_user(self):
@@ -105,10 +130,7 @@ class AutoReport(object):
         _path = '/NoAbsenceMngApi/Execute'
         _headers = self.public_headers
         _headers['content-type'] = 'application/x-www-form-urlencoded'
-        now = datetime.datetime.now()
-        year = str(int(now.strftime('%Y')))
-        month = str(int(now.strftime('%m')))
-        day = str(int(now.strftime('%d')))
+        year, month, day = get_non_zero_date()
         _data = {
             "Usercode": self.usercode,
             "Docmd": "add",
@@ -122,25 +144,47 @@ class AutoReport(object):
         return True, _response
 
 
+    '''
+        节假日停课上报
+    '''
+    def suspension_report(self, reason='周末/节假日停课', type='全校'):
+        _path = '/SuspensionMngApi/Execute?Docmd'
+        _headers = self.public_headers
+        _headers['content-type'] = 'application/x-www-form-urlencoded'
+        year, month, day = get_non_zero_date()
+        _data = {
+            "SuspnStartDate": year+'-'+month+'-'+day,
+            "SuspnEndDate": year+'-'+month+'-'+day,
+            "SuspensionReason": reason,
+            "SuspensionType": type,
+            "SuspensionGrade": "",
+            "SuspensionClass": "",
+            "DiseaseName": "",
+            "Usercode": self.usercode,
+            "Docmd": "add"
+        }
+        return self.public_request(path=_path, data=_data, headers=_headers)
 
 
-if __name__ == '__main__':
-    test = AutoReport('', '', '')
-    if not test.login():
-        print('登录失败 请检查')
-        exit()
-    userinfo = test.get_user()
-    if not userinfo:
-        print('获取用户信息失败')
-        exit()
-    print("已登录 {} ".format(userinfo['CommunityName']))
-    report_types = test.no_absense_check()
-    if report_types:
-        for report_type in report_types:
-            if report_type == "无人缺勤": test.no_absense_report(1)
-            elif report_type == "无人缺课": test.no_absense_report(0)
+
+if __name__ == "__main__":
+    username = ''
+    password = ''
+    owner = ''
+    report = AutoReport(username, password, owner)
+    doLogin = report.login()
+    if not report.public_check(doLogin): raise Exception ('登录失败')
+    report.usercode = doLogin['RetValue']
+    if isHoliday():
+        print("节假日上报")
+        resp = report.suspension_report()
+        if report.public_check(resp): 
+            print("上报成功")
+            exit()
+        else:
+            print("上报失败", resp['RetValue'], "StatusCode:", resp['RetStatus'])
+            exit()
     else:
-        print('填报完成')
-        exit()
-
-
+        print("工作日上报")
+        # ...
+        
