@@ -1,7 +1,8 @@
 import requests
 import json
 import datetime
-
+import time
+import random
 
 def isHoliday(datestr=None):
     if datestr is None:
@@ -25,6 +26,16 @@ def get_non_zero_date():
     month = str(int(now.strftime('%m')))
     day = str(int(now.strftime('%d')))
     return year, month, day
+
+
+def heart_beat(heartbeat):
+    if heartbeat == "": return False
+    try:
+        requests.get(heartbeat, timeout=5)
+        return True
+    except Exception as e:
+        print(e)
+        return False
 
 
 class AutoReport(object):
@@ -166,25 +177,74 @@ class AutoReport(object):
         return self.public_request(path=_path, data=_data, headers=_headers)
 
 
+    """
+        午检打卡
+    """
+    def noon_report(self):
+        _path = "/NoonSignInMngApi/Execute"
+        _headers = self.public_headers
+        _headers['content-type'] = 'application/x-www-form-urlencoded'
+        _data = {
+            "Usercode": self.usercode,
+            "Docmd": "add",
+            "IsAdd": 0
+        }
+        return self.public_request(path=_path, data=_data, headers=_headers)
+    
+
+
 
 if __name__ == "__main__":
-    username = ''
-    password = ''
-    owner = ''
+    heartbeat = ""
+    try: 
+        with open(".env", 'r', encoding='utf-8') as env:
+            _envfile = env.readlines()
+            env.close()
+        for _env in _envfile:
+            _env = _env.strip()
+            if _env.startswith('#'): continue
+            _env = _env.split('=')
+            if _env[0] == 'username': username = _env[1]
+            elif _env[0] == 'password': password = _env[1]
+            elif _env[0] == 'owner': owner = _env[1]
+            elif _env[0] == 'heartbeat': heartbeat = _env[1]
+    except Exception as e:
+        print("请检查.env文件")
+        print(e)
+        exit()
+    try: username, password, owner, heartbeat
+    except: raise Exception("请检查.env文件")
     report = AutoReport(username, password, owner)
     doLogin = report.login()
     if not report.public_check(doLogin): raise Exception ('登录失败')
     report.usercode = doLogin['RetValue']
-    if isHoliday():
-        print("节假日上报")
-        resp = report.suspension_report()
-        if report.public_check(resp): 
-            print("上报成功")
-            exit()
+    while True:
+        hr = datetime.datetime.now().hour
+        if heart_beat(heartbeat): print('Heartbeat success.')
+        else: print('Heartbeat failed.')
+        if isHoliday():
+            print("节假日上报")
+            if hr == 8:
+                resp = report.suspension_report()
+                if report.public_check(resp): 
+                    print("上报成功")
+                else:
+                    print("上报失败", resp['RetValue'], "StatusCode:", resp['RetStatus'])
         else:
-            print("上报失败", resp['RetValue'], "StatusCode:", resp['RetStatus'])
-            exit()
-    else:
-        print("工作日上报")
-        # ...
+            print("工作日上报")
+            if hr == 7:
+                print("无人上报")
+                check = report.no_absense_check()
+                if check:
+                    for type in check:
+                        if type == '无人缺课': report.no_absense_report(0)
+                        elif type == '无人缺勤': report.no_absense_report(1)
+                else: print("无需上报")
+            if hr == 12:
+                noon = report.noon_report()
+                print("午检上报")
+                if report.public_check(noon): print("上报成功")
+                else: print("上报失败", noon['RetValue'], "StatusCode:", noon['RetStatus'])
+        time.sleep(random.randrange(600, 1200))
+
         
