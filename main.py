@@ -102,12 +102,12 @@ class AutoReport(object):
         return self.public_request(path=_path, data=_data)
 
     
-    def get_user(self):
-        _path = '/HomePage/GetUserByRole'
-        _data = {
-            "Usercode": self.usercode
-        }
-        return self.public_request(path=_path, data=_data)
+    # def get_user(self):
+    #     _path = '/HomePage/GetUserByRole'
+    #     _data = {
+    #         "Usercode": self.usercode
+    #     }
+    #     return self.public_request(path=_path, data=_data)
     
 
     '''
@@ -149,10 +149,7 @@ class AutoReport(object):
             "TianBaoDate": year+'-'+month+'-'+day, 
             'TianBaoRen': self.owner
         }
-        _response = self.public_request(path=_path, data=_data, headers=_headers)
-        if not _response: return False, -1
-        if not (_response['RetValue'] and _response['RetStatus'] == 100): return False, _response
-        return True, _response
+        return self.public_request(path=_path, data=_data, headers=_headers)
 
 
     '''
@@ -237,8 +234,10 @@ if __name__ == "__main__":
                 check = report.no_absense_check()
                 if check:
                     for type in check:
-                        if type == '无人缺课': report.no_absense_report(0)
-                        elif type == '无人缺勤': report.no_absense_report(1)
+                        if type == '无人缺课': _r = report.no_absense_report(0)
+                        elif type == '无人缺勤': _r = report.no_absense_report(1)
+                        if report.public_check(_r): print(type, "上报成功")
+                        else: print(type, "上报失败", _r['RetValue'], "StatusCode:", _r['RetStatus'])
                 else: print("无需上报")
             if hr == 12:
                 noon = report.noon_report()
